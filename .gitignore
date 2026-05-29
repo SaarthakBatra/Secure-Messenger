@@ -1,0 +1,35 @@
+# MultiLingo Dev-Branch Gitignore
+# Allows tracking of AI metadata and agent scaffolding to ensure a complete private backup.
+
+# Track AI Scaffolding (Negated/Allowed on Dev)
+!.agent/
+!.antigravity/
+!/brain/
+
+# Ignore actual temporary build outputs and local caches
+.gemini/
+Output/
+Temp Resources/
+**/*-prompt.md
+_temp/
+
+# Dependencies
+node_modules/
+jspm_packages/
+.pnp/
+.pnp.js
+
+# Flutter and Mobile Build outputs
+.dart_tool/
+build/
+.pub-cache/
+.pub/
+android/app/protobuf
+ios/.symlinks
+ios/Pods
+ios/Flutter/Flutter.podspec
+ios/Flutter/Flutter.framework
+
+# Environment Configs (Ignore credentials, allow example template)
+.env*
+!.env.example
