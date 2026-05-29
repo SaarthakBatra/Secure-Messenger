@@ -1,17 +1,16 @@
-# MultiLingo Dev-Branch Gitignore
-# Allows tracking of AI metadata and agent scaffolding to ensure a complete private backup.
+# MultiLingo Public-Branch Gitignore
+# Excludes all developer metadata, backend keys, and maintenance guides from public view.
 
-# Track AI Scaffolding (Negated/Allowed on Dev)
-!.agent/
-!.antigravity/
-!/brain/
-
-# Ignore actual temporary build outputs and local caches
+# Ignore AI Scaffolding and maintenance logs
+.agent/
+.antigravity/
 .gemini/
+/brain/
+_temp/
+MAINTENANCE.md
 Output/
 Temp Resources/
 **/*-prompt.md
-_temp/
 
 # Dependencies
 node_modules/
