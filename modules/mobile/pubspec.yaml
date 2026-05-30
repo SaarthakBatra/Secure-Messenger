@@ -18,12 +18,14 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   dio: ^5.4.0
-  flutter_sodium: ^0.2.0
   pointycastle: ^3.7.0
   flutter_windowmanager: ^0.2.0
   screen_protector: ^1.5.1
   bip39: ^1.0.6
   flutter_dotenv: ^5.1.0
+  cryptography: ^2.9.0
+  sodium_libs: ^3.4.6+4
+  sqflite_common_ffi_web: ^1.1.1
 
 dev_dependencies:
   flutter_test:
@@ -35,6 +37,11 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/app_icon.png"
+  web:
+    generate: true
+    image_path: "assets/app_icon.png"
+    background_color: "#ffffff"
+    theme_color: "#ffffff"
 
 flutter:
   uses-material-design: true
@@ -42,6 +49,7 @@ flutter:
     - .env
     - assets/dictionary.json
     - assets/words.json
+    - assets/languages_data.json
 
 dependency_overrides:
   ffi: ^2.1.2

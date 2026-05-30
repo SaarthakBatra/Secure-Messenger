@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_sodium/flutter_sodium.dart';
 import 'package:pointycastle/export.dart';
+import '../../security/services/sodium_instance.dart';
 // ignore: avoid_relative_lib_imports
 import '../../../shared/dart/subkey_service.dart';
 
@@ -33,7 +33,7 @@ class MessageCryptoService {
     required String plaintext,
     required String aadString,
   }) {
-    final nonce = Sodium.randombytesBuf(12);
+    final nonce = SodiumInstance.sodium.randombytes.buf(12);
     final aad = Uint8List.fromList(utf8.encode(aadString));
     final plaintextBytes = Uint8List.fromList(utf8.encode(plaintext));
 

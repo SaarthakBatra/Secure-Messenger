@@ -45,9 +45,9 @@ final translationSyncTokenProvider = Provider.autoDispose<Uint8List?>((ref) {
     debugPrint('[CRYPTO] Missing identity private key. Generating one on the fly (self-healing migration)...');
     try {
       final identityKeypair = SodiumCryptoService.generateIdentityKeypair();
-      final syncProfileId = base64Encode(identityKeypair.pk);
+      final syncProfileId = base64Encode(identityKeypair.publicKey);
       final encryptedIdentityPrivateKey = SodiumCryptoService.encryptSymmetric(
-        base64Encode(identityKeypair.sk),
+        base64Encode(identityKeypair.secretKey.extractBytes()),
         msk,
       );
       

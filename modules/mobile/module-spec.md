@@ -115,6 +115,35 @@ To maintain synchronized states and handle decryption or network dropouts, clien
   - Payload: `{"type": "failed_decryption", "targetMessageId": "<id>"}`
   - Action: Inform the peer client that a specific message failed verification, prompting the peer UI to label that message locally as `FAILED_DECRYPTION`.
 
+## Decoy App Gamification & Dynamic Interactions (Features/Cover)
+To increase the authenticity of the "MultiLingo" decoy, the application implements several interactive and dynamic features standard in gamified language learning apps. The decoy app (`modules/mobile/lib/features/cover/`) was completely refactored to function as an authentic Gamified Language Learning app.
+
+### 1. Global Navigation & Layout
+- **File:** `screens/decoy_home_screen.dart`
+- **Logic:** Refactored from a static view to an `IndexedStack` powered by a `BottomNavigationBar`. It now orchestrates three main tabs: Learn (Home), Leaderboard, and Profile.
+
+### 2. State Management & Data Binding
+- **`targetLanguageProvider`** (`providers/target_language_provider.dart`): A `StateProvider<String>` that holds the active language code (e.g., 'es', 'fr', 'ja').
+- **`wordOfDayProvider`** (`providers/word_of_day_provider.dart`): Watches `targetLanguageProvider` to dynamically fetch the localized Word of the Day.
+- **Data Layer:** Centralized `mock_dictionary.dart` (`data/mock_dictionary.dart`) utilizing a `getRandomWords()` function to dynamically shuffle and populate 20 distinct words across 5 languages for all interactive games.
+- **Asset Registration:** Fixed `assets/languages_data.json` loading by correctly registering it in `modules/mobile/pubspec.yaml`.
+
+### 3. Gamified Features (Learn Tab)
+- **Skill Tree & Quests:** Implemented a vertical, scrolling skill tree inside `decoy_home_screen.dart`. Added a "Daily Quests" module where users can claim XP rewards (incrementing the local `_xp` state).
+- **Interactive Modal:** Tapping an active skill tree node opens the `_InteractiveLessonFlow` (using `showModalBottomSheet`), which dynamically pulls randomized vocabulary based on the `targetLanguageProvider`.
+
+### 4. Mini-Game (Phase C)
+- **File:** `screens/match_game_screen.dart`
+- **Logic:** Launched via a `FloatingActionButton` on the home tab. A 12-tile matching game (6 English / 6 Target Language) powered by `mock_dictionary.dart`. Utilizes local `setState` for card flipping, matching validation (red/green highlights), and rewards the user with 50 XP upon clearing the board via the `onCompleted` callback.
+
+### 5. Gamified Mock Screens (Leaderboard & Profile)
+- **Leaderboard** (`screens/leaderboard_screen.dart`): Contains an algorithmic generation loop yielding 100 mock competitors. The active user ("You") is hardcoded at rank 24 with 950 XP to simulate climbing a "Silver League".
+- **Profile** (`screens/profile_screen.dart`): A static mock UI tracking gamified stats (Streak, Total XP, Top League) and a grid of unlocked/locked achievements.
+
+### 6. Haptics & Stealth
+- **Micro-Interactions:** Applied `HapticFeedback` (light, medium, heavy impacts) across the entire UI for premium interaction. `ScaleTransition` bounce effects on primary buttons and quiz inputs.
+- **CRITICAL STEALTH HOOK:** The `coverLogoLongPressCallbackProvider` and `_handleLogoTap` logic in `decoy_home_screen.dart` were explicitly preserved. The vault access mechanism remains entirely undetected and functional.
+
 ## Initialization Flow (`main.dart`)
 1. Ensure Flutter binding is initialized (`WidgetsFlutterBinding.ensureInitialized()`).
 2. Initialize `SharedPreferences` asynchronously.

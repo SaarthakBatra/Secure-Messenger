@@ -3,6 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const http = require('http');
 const { WebSocketServer } = require('ws');
+const cors = require('cors');
 const helmet = require('helmet');
 const winston = require('winston');
 
@@ -17,6 +18,7 @@ const server = http.createServer(app);
 server.maxHeadersCount = 30;
 server.headersTimeout = 10000; // 10 seconds
 
+app.use(cors());
 app.use(helmet());
 app.use(express.json());
 

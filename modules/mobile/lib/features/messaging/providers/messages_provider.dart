@@ -36,10 +36,14 @@ final messagesProvider = FutureProvider.family.autoDispose<List<Map<String, dyna
     );
     
     String content = '';
+    String? replyToMessageId;
+    String? replyToContent;
     if (decrypted != null) {
       try {
         final envelope = jsonDecode(decrypted) as Map<String, dynamic>;
         content = envelope['content'] as String? ?? '';
+        replyToMessageId = envelope['replyToMessageId'] as String?;
+        replyToContent = envelope['replyToContent'] as String?;
       } catch (_) {
         content = decrypted;
       }
@@ -58,6 +62,8 @@ final messagesProvider = FutureProvider.family.autoDispose<List<Map<String, dyna
       'content': content,
       'timestamp': timestamp,
       'delivery_status': deliveryStatus,
+      'replyToMessageId': replyToMessageId,
+      'replyToContent': replyToContent,
     });
   }
   return decryptedMessages;

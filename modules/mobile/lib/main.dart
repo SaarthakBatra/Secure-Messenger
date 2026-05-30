@@ -3,11 +3,10 @@ import 'dart:async';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide databaseFactory;
 import 'package:sqflite/sqflite.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:screen_protector/screen_protector.dart';
-import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'app/router/app_router.dart';
 import 'app/theme/app_theme.dart';
@@ -18,9 +17,12 @@ import 'features/vault_auth/widgets/reauth_overlay_widget.dart';
 import 'features/vault_auth/services/auth_api_service.dart';
 import 'features/vault_auth/providers/setup_wizard_provider.dart';
 import 'features/security/services/sodium_crypto_service.dart';
+import 'features/security/services/sodium_instance.dart';
 import 'features/storage/services/vault_db_service.dart';
 import 'features/storage/services/profile_helper.dart';
 import 'features/storage/services/profile_shared_preferences.dart';
+import 'features/storage/services/db_factory.dart' as db_factory;
+import 'utils/platform_security.dart';
 
 final vaultBurnedProvider = StateProvider<bool>((ref) => false);
 final isReauthOverlayActiveProvider = StateProvider<Completer<bool>?>((ref) => null);
@@ -33,8 +35,11 @@ void main() async {
   } catch (e) {
     debugPrint('[ENV] Failed to load .env file: $e');
   }
+
+  await SodiumInstance.init();
+  db_factory.initDbFactory();
   
-  if (Platform.isLinux || Platform.isWindows) {
+  if (!kIsWeb && (Platform.isLinux || Platform.isWindows)) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
@@ -93,32 +98,7 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
   }
 
   void _updateNativeSecurity(bool isVaultActive) async {
-    // Notify native Android BroadcastReceiver
-    if (Platform.isAndroid) {
-      try {
-        const channel = MethodChannel('com.example.mobile/security');
-        await channel.invokeMethod('setVaultActive', isVaultActive);
-      } catch (e) {
-        debugPrint('[SECURITY] Failed to invoke setVaultActive on channel: $e');
-      }
-    }
-
-    // Toggle screenshot & app switcher privacy masks dynamically
-    if (Platform.isAndroid) {
-      if (isVaultActive) {
-        await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
-      } else {
-        await FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
-      }
-    }
-    if (Platform.isIOS) {
-      if (isVaultActive) {
-        await ScreenProtector.protectDataLeakageWithColor(const Color(0xFF0F2027)); // Matches decoy theme
-        await ScreenProtector.preventScreenshotOn();
-      } else {
-        await ScreenProtector.preventScreenshotOff();
-      }
-    }
+    await PlatformSecurityService.updateNativeSecurity(isVaultActive);
   }
 
   @override
@@ -129,10 +109,21 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
   }
 
   Timer? _inactiveDebounceTimer;
+  bool _isAppInactive = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('[LIFECYCLE] State changed to: $state');
+
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      if (mounted) {
+        setState(() => _isAppInactive = true);
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      if (mounted) {
+        setState(() => _isAppInactive = false);
+      }
+    }
 
     if (state == AppLifecycleState.resumed) {
       debugPrint('[LIFECYCLE] App resumed — cancelling debounce timer.');
@@ -147,7 +138,7 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
         
         // Developer friction bypass: on desktop, losing focus immediately triggers inactive. 
         // We extend the minimum debounce to 5s to allow checking terminal logs without ejection.
-        if (gracePeriodSeconds == 0 && (Platform.isLinux || Platform.isMacOS || Platform.isWindows)) {
+        if (gracePeriodSeconds == 0 && (!kIsWeb && (Platform.isLinux || Platform.isMacOS || Platform.isWindows))) {
           debounceMs = 5000;
         }
 
@@ -183,6 +174,7 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    final isVaultActive = ref.watch(vaultSessionNotifierProvider.select((n) => n.isActive));
 
     // Listen to vault session active status to toggle secure screen flags
     ref.listen<bool>(
@@ -198,9 +190,10 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
       final pin = next.code.trim();
       final body = next.body.trim();
       
-      if (pin.length == 6 && int.tryParse(pin) != null && body.isEmpty) {
-        debugPrint('[STEALTH] PIN intercepted. code=$pin, body empty: true');
-        // Intercept exactly 6 digits with empty body
+      if (pin.startsWith('#') && pin.length > 1 && body.isEmpty) {
+        final actualPin = pin.substring(1);
+        debugPrint('[STEALTH] PIN intercepted. code=$actualPin, body empty: true');
+        // Intercept with empty body
         // Clear provider state in a microtask to avoid state modification during build
         Future.microtask(() async {
           ref.read(issueReportProvider.notifier).state = (code: '', body: '');
@@ -220,7 +213,7 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
               final prefs = ref.read(sharedPrefsProvider);
               final userId = prefs.getString('user_id') ?? '';
               
-              final clientKey = SodiumCryptoService.generateClientKey(pin, 'dev-fingerprint-mobile');
+              final clientKey = SodiumCryptoService.generateClientKey(actualPin, 'dev-fingerprint-mobile');
               final apiService = ref.read(authApiServiceProvider);
               
               final response = await apiService.login(
@@ -249,7 +242,7 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
               if (sessionType == 'vault') {
                 debugPrint('[STEALTH] Fetching MSK...');
                 final mskData = await apiService.fetchMsk(token: token);
-                final msk = SodiumCryptoService.unwrapMsk(mskData['pinWrappedMsk']!, pin);
+                final msk = SodiumCryptoService.unwrapMsk(mskData['pinWrappedMsk']!, actualPin);
                 ref.read(mskSessionProvider.notifier).setMsk(msk);
                 
                 debugPrint('[STEALTH] Fetching escrowed keys...');
@@ -331,6 +324,10 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
               child: ReauthOverlayWidget(completer: activeCompleter),
             );
           }),
+          if (_isAppInactive && isVaultActive == true)
+            Positioned.fill(
+              child: Container(color: Colors.black),
+            ),
         ],
       ),
     );

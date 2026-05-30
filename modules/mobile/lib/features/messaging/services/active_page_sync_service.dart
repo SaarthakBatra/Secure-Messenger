@@ -73,7 +73,7 @@ class ActivePageSyncService {
                   'delivery_status': m['delivery_status'],
                   'chapter_hash': null, // active messages have no chapter
                 },
-                conflictAlgorithm: ConflictAlgorithm.ignore,
+                conflictAlgorithm: ConflictAlgorithm.replace,
               );
             }
             // Invalidate to update UI reactively

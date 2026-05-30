@@ -2,11 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../data/mock_dictionary.dart';
 import '../providers/streak_provider.dart';
 import '../providers/word_of_day_provider.dart';
+import '../providers/target_language_provider.dart';
 import '../services/wotd_sync_service.dart';
+import 'leaderboard_screen.dart';
+import 'profile_screen.dart';
+import 'match_game_screen.dart';
 
 // The stealth callback provider overridden by the vault module to unlock secure messenger
 final coverLogoLongPressCallbackProvider = Provider<VoidCallback>((ref) {
@@ -23,28 +29,47 @@ class DecoyHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
+  int _selectedIndex = 0;
   int _logoTapCount = 0;
   DateTime? _lastLogoTapTime;
   int _xp = 340;
   final int _xpGoal = 500;
   final List<String> _recentlyLearned = ['Apple', 'Banana', 'Freedom', 'Peace', 'Cat'];
+  bool _questClaimed = false;
 
   // Track tapped status for 3 conversation flippers
   final List<bool> _conversationFlipped = [false, false, false];
-  final List<Map<String, String>> _conversations = [
-    {
-      'english': 'Excuse me, where is the library?',
-      'spanish': 'Disculpe, ¿dónde está la biblioteca?',
-    },
-    {
-      'english': 'I would like to order a cup of coffee, please.',
-      'spanish': 'Me gustaría pedir una taza de café, por favor.',
-    },
-    {
-      'english': 'How much does this ticket cost?',
-      'spanish': '¿Cuánto cuesta este boleto?',
-    },
-  ];
+
+  List<Map<String, String>> _getConversations(String langCode) {
+    final Map<String, List<Map<String, String>>> data = {
+      'es': [
+        {'english': 'Excuse me, where is the library?', 'target': 'Disculpe, ¿dónde está la biblioteca?'},
+        {'english': 'I would like to order a cup of coffee, please.', 'target': 'Me gustaría pedir una taza de café, por favor.'},
+        {'english': 'How much does this ticket cost?', 'target': '¿Cuánto cuesta este boleto?'},
+      ],
+      'fr': [
+        {'english': 'Excuse me, where is the library?', 'target': 'Excusez-moi, où est la bibliothèque ?'},
+        {'english': 'I would like to order a cup of coffee, please.', 'target': 'Je voudrais commander une tasse de café, s\'il vous plaît.'},
+        {'english': 'How much does this ticket cost?', 'target': 'Combien coûte ce billet ?'},
+      ],
+      'ja': [
+        {'english': 'Excuse me, where is the library?', 'target': 'すみません、図書館はどこですか？'},
+        {'english': 'I would like to order a cup of coffee, please.', 'target': 'コーヒーを一杯お願いします。'},
+        {'english': 'How much does this ticket cost?', 'target': 'このチケットはいくらですか？'},
+      ],
+      'de': [
+        {'english': 'Excuse me, where is the library?', 'target': 'Entschuldigung, wo ist die Bibliothek?'},
+        {'english': 'I would like to order a cup of coffee, please.', 'target': 'Ich möchte bitte eine Tasse Kaffee bestellen.'},
+        {'english': 'How much does this ticket cost?', 'target': 'Wie viel kostet dieses Ticket?'},
+      ],
+      'it': [
+        {'english': 'Excuse me, where is the library?', 'target': 'Scusi, dov\'è la biblioteca?'},
+        {'english': 'I would like to order a cup of coffee, please.', 'target': 'Vorrei ordinare una tazza di caffè, per favore.'},
+        {'english': 'How much does this ticket cost?', 'target': 'Quanto costa questo biglietto?'},
+      ]
+    };
+    return data[langCode] ?? data['es']!;
+  }
 
   @override
   void dispose() {
@@ -52,8 +77,9 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
   }
 
   void _handleLogoTap() {
+    HapticFeedback.selectionClick();
     final now = DateTime.now();
-    if (_lastLogoTapTime == null || now.difference(_lastLogoTapTime!) > const Duration(seconds: 2)) {
+    if (_lastLogoTapTime == null || now.difference(_lastLogoTapTime!) > const Duration(seconds: 1)) {
       _logoTapCount = 1;
     } else {
       _logoTapCount++;
@@ -70,21 +96,118 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
   }
 
   void _incrementXP(int amount) {
+    HapticFeedback.mediumImpact();
     setState(() {
       _xp = min(_xpGoal, _xp + amount);
     });
   }
 
+  void _showLanguageSelector(BuildContext context, String currentLangCode) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1F3A45),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Consumer(
+          builder: (context, ref, child) {
+            final langsAsync = ref.watch(languagesProvider);
+            return langsAsync.when(
+              data: (langs) {
+                return SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'Select Language',
+                          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      ...langs.map((l) => ListTile(
+                        leading: Text(l.flag, style: const TextStyle(fontSize: 24)),
+                        title: Text(l.name, style: const TextStyle(color: Colors.white)),
+                        trailing: l.code == currentLangCode ? const Icon(Icons.check, color: Color(0xFF00E676)) : null,
+                        onTap: () {
+                          ref.read(targetLanguageProvider.notifier).state = l.code;
+                          Navigator.pop(ctx);
+                        },
+                      )).toList(),
+                    ],
+                  ),
+                );
+              },
+              loading: () => const Padding(
+                padding: EdgeInsets.all(32.0),
+                child: Center(child: CircularProgressIndicator(color: Color(0xFF00E676))),
+              ),
+              error: (err, stack) => const Padding(
+                padding: EdgeInsets.all(32.0),
+                child: Text('Failed to load languages', style: TextStyle(color: Colors.redAccent)),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F2027),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _buildLearnTab(context),
+          const LeaderboardScreen(),
+          const ProfileScreen(),
+        ],
+      ),
+      floatingActionButton: _selectedIndex == 0 ? FloatingActionButton.extended(
+        onPressed: () {
+          showGeneralDialog(
+            context: context,
+            barrierDismissible: false,
+            barrierColor: Colors.black.withOpacity(0.9),
+            transitionDuration: const Duration(milliseconds: 300),
+            pageBuilder: (context, __, ___) => MatchGameScreen(
+              onCompleted: (xpReward) {
+                _incrementXP(xpReward);
+              },
+            ),
+          );
+        },
+        backgroundColor: const Color(0xFF00E676),
+        icon: const Icon(Icons.gamepad_rounded, color: Color(0xFF0F2027)),
+        label: const Text('Play Game', style: TextStyle(color: Color(0xFF0F2027), fontWeight: FontWeight.bold)),
+      ) : null,
+      bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: const Color(0xFF1F3A45),
+        selectedItemColor: const Color(0xFF00E676),
+        unselectedItemColor: Colors.white54,
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Learn'),
+          BottomNavigationBarItem(icon: Icon(Icons.leaderboard_rounded), label: 'Leaderboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLearnTab(BuildContext context) {
     final streak = ref.watch(streakProvider);
     final wotdAsync = ref.watch(wotdProvider);
     final theme = Theme.of(context);
+    final currentLangCode = ref.watch(targetLanguageProvider);
+    final conversationsList = _getConversations(currentLangCode);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F2027),
-      body: SafeArea(
-        child: SingleChildScrollView(
+    return SafeArea(
+      child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -136,6 +259,22 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
                     // Right Side Actions
                     Row(
                       children: [
+                        // Language Selector
+                        Consumer(
+                          builder: (context, ref, _) {
+                            final currentLangCode = ref.watch(targetLanguageProvider);
+                            final langsAsync = ref.watch(languagesProvider);
+                            String flag = '🌍';
+                            langsAsync.whenData((langs) {
+                              final match = langs.where((l) => l.code == currentLangCode).toList();
+                              if (match.isNotEmpty) flag = match.first.flag;
+                            });
+                            return IconButton(
+                              icon: Text(flag, style: const TextStyle(fontSize: 22)),
+                              onPressed: () => _showLanguageSelector(context, currentLangCode),
+                            );
+                          },
+                        ),
                         // Streak Badge
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -246,8 +385,21 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
+                
+                // Daily Quests UI
+                Text(
+                  'Daily Quests',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: Colors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildDailyQuests(context),
+                const SizedBox(height: 32),
 
-                // Unit Card + Interactive Lesson Button
+                // Vertical Skill Tree
                 Text(
                   'My Learning Path',
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -257,75 +409,7 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00E676).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFF00E676).withOpacity(0.2)),
-                  ),
-                  child: Row(
-                    children: [
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          SizedBox(
-                            width: 60,
-                            height: 60,
-                            child: CircularProgressIndicator(
-                              value: 0.65,
-                              strokeWidth: 6,
-                              backgroundColor: Colors.white.withOpacity(0.1),
-                              color: const Color(0xFF00E676),
-                            ),
-                          ),
-                          const Icon(Icons.star_rounded, color: Color(0xFF00E676), size: 30),
-                        ],
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Unit 2: Travel Basics',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Lesson 3 of 5 • 65% Complete',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.6),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => _launchLessonModal(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00E676),
-                    foregroundColor: const Color(0xFF0F2027),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 4,
-                  ),
-                  child: const Text(
-                    'Continue Learning',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
+                _buildVerticalSkillTree(context),
                 const SizedBox(height: 36),
 
                 // Conversation Practice Section
@@ -346,13 +430,14 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
                 ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _conversations.length,
+                  itemCount: conversationsList.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
-                    final item = _conversations[index];
+                    final item = conversationsList[index];
                     final isFlipped = _conversationFlipped[index];
                     return InkWell(
                       onTap: () {
+                        HapticFeedback.lightImpact();
                         setState(() {
                           _conversationFlipped[index] = !isFlipped;
                         });
@@ -394,7 +479,7 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
                                   if (isFlipped) ...[
                                     const SizedBox(height: 8),
                                     Text(
-                                      item['spanish']!,
+                                      item['target']!,
                                       style: const TextStyle(
                                         color: Color(0xFF00E676),
                                         fontWeight: FontWeight.w600,
@@ -615,7 +700,155 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
             ),
           ),
         ),
+      );
+  }
+
+  Widget _buildDailyQuests(BuildContext context) {
+    bool canClaim = _xp >= 50 && !_questClaimed;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: canClaim ? const Color(0xFFFF9100).withOpacity(0.5) : Colors.white.withOpacity(0.05)),
       ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF9100).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.stars_rounded, color: Color(0xFFFF9100), size: 32),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Earn 50 XP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(
+                  value: (_xp / 50.0).clamp(0.0, 1.0),
+                  backgroundColor: Colors.white.withOpacity(0.1),
+                  color: const Color(0xFFFF9100),
+                ),
+                const SizedBox(height: 6),
+                Text('${_xp.clamp(0, 50)} / 50 XP', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          if (_questClaimed)
+            const Icon(Icons.check_circle_rounded, color: Color(0xFF00E676), size: 32)
+          else if (canClaim)
+            ElevatedButton(
+              onPressed: () {
+                HapticFeedback.heavyImpact();
+                setState(() => _questClaimed = true);
+                _incrementXP(20); // Claim bonus
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF9100),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Claim', style: TextStyle(fontWeight: FontWeight.bold)),
+            )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVerticalSkillTree(BuildContext context) {
+    return Column(
+      children: List.generate(4, (index) {
+        final isActive = index == 2;
+        final isCompleted = index < 2;
+        final isLocked = index > 2;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              children: [
+                Container(
+                  width: 2,
+                  height: index == 0 ? 0 : 20,
+                  color: isCompleted || isActive ? const Color(0xFF00E676) : Colors.white24,
+                ),
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    if (isActive) _launchLessonModal(context);
+                    if (isLocked) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Complete previous lessons first!')));
+                    }
+                  },
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isCompleted ? const Color(0xFF00E676) : (isActive ? const Color(0xFF00E676).withOpacity(0.2) : Colors.white12),
+                      border: Border.all(
+                        color: isActive ? const Color(0xFF00E676) : Colors.transparent,
+                        width: 3,
+                      ),
+                    ),
+                    child: Icon(
+                      isCompleted ? Icons.check_rounded : (isLocked ? Icons.lock_rounded : Icons.play_arrow_rounded),
+                      color: isCompleted ? const Color(0xFF0F2027) : (isActive ? const Color(0xFF00E676) : Colors.white38),
+                      size: 28,
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 2,
+                  height: index == 3 ? 0 : 20,
+                  color: isCompleted ? const Color(0xFF00E676) : Colors.white24,
+                ),
+              ],
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(top: index == 0 ? 0 : 20),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: isActive ? const Color(0xFF00E676).withOpacity(0.3) : Colors.white.withOpacity(0.05)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Lesson ${index + 1}',
+                        style: TextStyle(
+                          color: isLocked ? Colors.white38 : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isCompleted ? 'Completed' : (isActive ? 'Current Lesson' : 'Locked'),
+                        style: TextStyle(
+                          color: isCompleted ? const Color(0xFF00E676) : (isActive ? const Color(0xFF00E676) : Colors.white38),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      }),
     );
   }
 
@@ -708,12 +941,14 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
   }
 
   void _launchLessonModal(BuildContext context) {
+    final currentLang = ref.read(targetLanguageProvider);
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.9),
       transitionDuration: const Duration(milliseconds: 350),
       pageBuilder: (context, __, ___) => _InteractiveLessonFlow(
+        langCode: currentLang,
         onCompleted: (xpReward) {
           _incrementXP(xpReward);
         },
@@ -725,7 +960,8 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
 // Stateful interactive 10 vocabulary cards + 5-question multi-choice quiz modal
 class _InteractiveLessonFlow extends StatefulWidget {
   final ValueChanged<int> onCompleted;
-  const _InteractiveLessonFlow({required this.onCompleted});
+  final String langCode;
+  const _InteractiveLessonFlow({required this.onCompleted, required this.langCode});
 
   @override
   State<_InteractiveLessonFlow> createState() => _InteractiveLessonFlowState();
@@ -750,28 +986,21 @@ class _InteractiveLessonFlowState extends State<_InteractiveLessonFlow> {
   }
 
   void _loadWords() async {
-    // Dynamic fallbacks matching words.json
-    final staticBackup = [
-      WordOfDay(word: 'apple', translation: 'manzana', definition: 'A round fruit.'),
-      WordOfDay(word: 'banana', translation: 'plátano', definition: 'A yellow curved fruit.'),
-      WordOfDay(word: 'freedom', translation: 'libertad', definition: 'The power to act.'),
-      WordOfDay(word: 'peace', translation: 'paz', definition: 'Freedom from disturbance.'),
-      WordOfDay(word: 'cat', translation: 'gato', definition: 'A small domesticated carnivorous mammal.'),
-      WordOfDay(word: 'dog', translation: 'perro', definition: 'A common domesticated carnivorous mammal.'),
-      WordOfDay(word: 'water', translation: 'agua', definition: 'A colorless, odorless chemical compound.'),
-      WordOfDay(word: 'book', translation: 'libro', definition: 'A written or printed work.'),
-      WordOfDay(word: 'friend', translation: 'amigo', definition: 'A person whom one knows and has a bond of mutual affection.'),
-      WordOfDay(word: 'school', translation: 'escuela', definition: 'An institution for educating children.')
-    ];
+    final randomEntries = getRandomWords(10);
+    final List<WordOfDay> staticBackup = randomEntries.map((e) {
+       final t = e.value[widget.langCode] ?? e.value['es']!;
+       return WordOfDay(word: e.key, translation: t, definition: 'A standard dictionary term.');
+    }).toList();
 
     try {
       final jsonString = await DefaultAssetBundle.of(context).loadString('assets/words.json');
       final List<dynamic> jsonList = jsonDecode(jsonString);
       List<WordOfDay> parsed = jsonList.map((e) => WordOfDay.fromJson(e)).toList();
+      parsed.shuffle();
       
       // Ensure we have exactly 10 words (pad or shuffle)
       if (parsed.length < 10) {
-        parsed.addAll(staticBackup.sublist(0, 10 - parsed.length));
+        parsed.addAll(staticBackup.sublist(0, min(10 - parsed.length, staticBackup.length)));
       }
       setState(() {
         _words = parsed.sublist(0, 10);
@@ -915,6 +1144,7 @@ class _InteractiveLessonFlowState extends State<_InteractiveLessonFlow> {
         Expanded(
           child: GestureDetector(
             onTap: () {
+              HapticFeedback.lightImpact();
               setState(() {
                 _cardFlipped = !_cardFlipped;
               });
@@ -935,7 +1165,7 @@ class _InteractiveLessonFlowState extends State<_InteractiveLessonFlow> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        _cardFlipped ? 'SPANISH TRANSLATION' : 'ENGLISH TERM',
+                        _cardFlipped ? 'TARGET TRANSLATION' : 'ENGLISH TERM',
                         style: TextStyle(
                           color: _cardFlipped ? const Color(0xFF00E676) : Colors.white70,
                           fontSize: 12,

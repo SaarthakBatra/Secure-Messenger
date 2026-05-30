@@ -45,7 +45,7 @@ void main() {
       expect(find.text('Greeting someone in a polite or friendly way.'), findsOneWidget);
     });
 
-    testWidgets('Edge Case: Stealth Hook triggers callback only after 3-second long press', (WidgetTester tester) async {
+    testWidgets('Edge Case: Stealth Hook triggers callback only after 5 rapid taps', (WidgetTester tester) async {
       bool callbackFired = false;
 
       await tester.pumpWidget(
@@ -66,21 +66,19 @@ void main() {
       final logoFinder = find.byKey(const Key('stealth_logo_button'));
       expect(logoFinder, findsOneWidget);
 
-      // Simulate tapping down on the logo to initiate the custom long-press timer
-      final TestGesture gesture = await tester.startGesture(tester.getCenter(logoFinder));
-      await tester.pump();
-
-      // Pump for 2 seconds (2000 milliseconds) - callback should NOT fire yet
-      await tester.pump(const Duration(seconds: 2));
+      // Tap 4 times rapidly - callback should NOT fire
+      for (int i = 0; i < 4; i++) {
+        await tester.tap(logoFinder);
+        await tester.pump();
+      }
       expect(callbackFired, isFalse);
 
-      // Pump for another 1.1 seconds (1100 milliseconds, total 3.1 seconds) - callback should fire!
-      await tester.pump(const Duration(milliseconds: 1100));
-      expect(callbackFired, isTrue);
-
-      // Release the finger
-      await gesture.up();
+      // Tap the 5th time rapidly
+      await tester.tap(logoFinder);
       await tester.pump();
+      
+      // Callback should now fire!
+      expect(callbackFired, isTrue);
     });
 
     testWidgets('Conversations: Tapping a conversational card flips to reveal translation', (WidgetTester tester) async {

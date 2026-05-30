@@ -27,6 +27,7 @@ This module purely orchestrates the user interface shells and navigation between
 - **WebSocket Listener**: Subscribes to `ws://localhost:3000/ws?token=$token` on session start to receive real-time push events (e.g. `PENDING_INVITE`) and updates the pending rooms dashboard instantly, as well as handling E2EE messaging synchronization.
 - **E2EE Messaging Engine (Phase 3b)**: Houses the message cryptography (AES-256-GCM), active page synchronization and conflict resolution, content-addressable hash alignment checks, Cloudflare R2 SINGLY LINKED-LIST archiving, and lazy loading history retrieval.
 - **Chat Interface (`ChatScreen`)**: Renders real-time message bubbles with full decryption, dynamic typing scroll pinning, active page synchronizer on entry, and WebSocket transmission support.
+- **Decoy Gamification (`lib/features/cover/`)**: Enhances plausible deniability by restructuring `decoy_home_screen.dart` into an `IndexedStack` with a `BottomNavigationBar`. It incorporates dynamic language selection via `targetLanguageProvider` and `mock_dictionary.dart`. Includes a vertically scrolling skill tree, daily quests, a 12-tile matching mini-game (`match_game_screen.dart`), and procedurally generated mock Leaderboard and Profile screens. **CRITICAL:** The stealth entry hook (`_handleLogoTap`) remains untouched and fully functional.
 
 ## E2EE Messaging Protocols & Synchronization Workflows
 

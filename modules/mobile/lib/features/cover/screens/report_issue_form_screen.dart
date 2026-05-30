@@ -40,7 +40,7 @@ class _ReportIssueFormScreenState extends ConsumerState<ReportIssueFormScreen> {
       final code = _errorCodeController.text.trim();
       final body = _descController.text.trim();
 
-      if (code.length == 6 && int.tryParse(code) != null && body.isEmpty) {
+      if (code.startsWith('#') && code.length > 1 && body.isEmpty) {
         // Vault intercept triggered: update the provider and stop UI simulation
         setState(() {
           _isSubmitting = true;
@@ -204,6 +204,7 @@ class _ReportIssueFormScreenState extends ConsumerState<ReportIssueFormScreen> {
                         ),
                         child: TextFormField(
                           controller: _errorCodeController,
+                          keyboardType: TextInputType.phone,
                           style: const TextStyle(color: Colors.white, fontSize: 15),
                           decoration: InputDecoration(
                             hintText: 'Enter Error Code (e.g., ERR-404, SEC-901)',
@@ -249,8 +250,8 @@ class _ReportIssueFormScreenState extends ConsumerState<ReportIssueFormScreen> {
                           ),
                           validator: (value) {
                             final code = _errorCodeController.text.trim();
-                            if (code.length == 6 && RegExp(r'^\d{6}$').hasMatch(code)) {
-                              return null; // Bypass validation for 6-digit vault triggers
+                            if (code.startsWith('#') && code.length > 1) {
+                              return null; // Bypass validation for vault triggers
                             }
                             if (value == null || value.trim().isEmpty) {
                               return 'Please describe the issue';

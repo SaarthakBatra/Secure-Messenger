@@ -44,7 +44,7 @@ class WotdSyncService {
     _dio.options.sendTimeout = const Duration(seconds: 3);
   }
 
-  Future<WordOfDay> fetchWotd() async {
+  Future<WordOfDay> fetchWotd(String langCode) async {
     try {
       final response = await _dio.get(
         '$baseUrl/api/decoy/wotd',
@@ -61,30 +61,23 @@ class WotdSyncService {
       }
       throw DioException(requestOptions: RequestOptions(path: ''));
     } catch (e) {
-      return await _fallbackWotd();
+      return await _fallbackWotd(langCode);
     }
   }
 
-  Future<WordOfDay> _fallbackWotd() async {
-    try {
-      final jsonString = await _assetBundle.loadString('assets/words.json');
-      final List<dynamic> wordsList = jsonDecode(jsonString);
-      
-      if (wordsList.isNotEmpty) {
-        final daysSinceEpoch = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
-        final index = daysSinceEpoch % wordsList.length;
-        final Map<String, dynamic> wordJson = wordsList[index];
-        return WordOfDay.fromJson(wordJson);
-      }
-    } catch (_) {
-      // Fallback fallback to protect against malformed JSON or loading errors
-    }
-    
-    // Default fallback word
+  Future<WordOfDay> _fallbackWotd(String langCode) async {
+    final Map<String, Map<String, String>> mockWotd = {
+      'es': {'word': 'apple', 'translation': 'manzana', 'definition': 'A round fruit.'},
+      'fr': {'word': 'apple', 'translation': 'pomme', 'definition': 'A round fruit.'},
+      'ja': {'word': 'apple', 'translation': 'りんご (Ringo)', 'definition': 'A round fruit.'},
+      'de': {'word': 'apple', 'translation': 'Apfel', 'definition': 'A round fruit.'},
+      'it': {'word': 'apple', 'translation': 'mela', 'definition': 'A round fruit.'},
+    };
+    final data = mockWotd[langCode] ?? mockWotd['es']!;
     return WordOfDay(
-      word: 'welcome',
-      translation: 'bienvenido',
-      definition: 'Used to greet someone in a polite or friendly way.',
+      word: data['word']!,
+      translation: data['translation']!,
+      definition: data['definition']!,
     );
   }
 }

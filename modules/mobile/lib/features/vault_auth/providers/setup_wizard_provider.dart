@@ -129,9 +129,9 @@ class SetupWizardNotifier extends StateNotifier<SetupWizardState> {
 
       // 4. Generate X25519 Identity Keypair (covert terms: syncProfileId / translationSyncToken)
       final identityKeypair = SodiumCryptoService.generateIdentityKeypair();
-      final syncProfileId = base64Encode(identityKeypair.pk);
+      final syncProfileId = base64Encode(identityKeypair.publicKey);
       final encryptedIdentityPrivateKey = SodiumCryptoService.encryptSymmetric(
-        base64Encode(identityKeypair.sk),
+        base64Encode(identityKeypair.secretKey.extractBytes()),
         msk,
       );
 

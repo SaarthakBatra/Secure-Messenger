@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/wotd_sync_service.dart';
+import 'target_language_provider.dart';
 
 final wotdServiceProvider = Provider<WotdSyncService>((ref) {
   return WotdSyncService();
@@ -8,6 +9,7 @@ final wotdServiceProvider = Provider<WotdSyncService>((ref) {
 
 // Exposes the Word of the Day dynamically
 final wotdProvider = FutureProvider<WordOfDay>((ref) async {
+  final langCode = ref.watch(targetLanguageProvider);
   final isRunningInTest = Zone.current[#test.declarer] != null;
   if (isRunningInTest) {
     return WordOfDay(
@@ -18,5 +20,5 @@ final wotdProvider = FutureProvider<WordOfDay>((ref) async {
   }
 
   final service = ref.watch(wotdServiceProvider);
-  return await service.fetchWotd();
+  return await service.fetchWotd(langCode);
 });

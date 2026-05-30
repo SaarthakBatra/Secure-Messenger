@@ -200,13 +200,13 @@ class WebSocketService {
           'sender_id': senderUserId,
           'encrypted_payload': encryptedBlob,
           'timestamp': timestamp,
-          'delivery_status': 'acknowledged',
+          'delivery_status': 'delivered',
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
 
       // Respond with receipt
-      sendReceipt(messageId, 'acknowledged');
+      sendReceipt(messageId, 'delivered');
 
       // Invalidate messages provider to update UI reactively
       _ref.invalidate(messagesProvider(conversationId));
@@ -385,11 +385,11 @@ class WebSocketService {
                     'sender_id': senderUserId,
                     'encrypted_payload': newBlob,
                     'timestamp': timestamp,
-                    'delivery_status': 'acknowledged',
+                    'delivery_status': 'delivered',
                   },
                   conflictAlgorithm: ConflictAlgorithm.replace,
                 );
-                sendReceipt(messageId, 'acknowledged');
+                sendReceipt(messageId, 'delivered');
                 debugPrint('[WEBSOCKET] Successfully recovered and decrypted message $messageId from server messages endpoint.');
                 return;
               }

@@ -29,6 +29,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String _projectStatus = 'PENDING';
   String _currentUserId = '';
   bool _isSyncing = false;
+  Map<String, dynamic>? _replyingTo;
+  String? _highlightedMessageId;
+  final Map<String, GlobalKey> _messageKeys = {};
 
   @override
   void initState() {
@@ -112,7 +115,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final token = ref.read(vaultSessionNotifierProvider).token;
     if (msk == null || token == null) return;
 
+    final replyId = _replyingTo?['message_id'];
+    final replyContent = _replyingTo?['content'];
+
     _messageController.clear();
+    setState(() {
+      _replyingTo = null;
+    });
 
     try {
       final lessonKey = await VaultDbService.instance.getConversationKey(widget.conversationId, msk);
@@ -137,6 +146,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final plaintext = jsonEncode({
         'content': text,
         'hash': pageHash,
+        if (replyId != null) 'replyToMessageId': replyId,
+        if (replyContent != null) 'replyToContent': replyContent,
       });
 
       final encrypted = MessageCryptoService.encryptMessage(
@@ -185,10 +196,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.done_all, size: 14, color: Color(0xFF00E676)),
+            Icon(Icons.done_all, size: 14, color: Colors.blue),
           ],
         );
-      case 'acknowledged':
       case 'delivered':
         return const Icon(Icons.done_all, size: 14, color: Colors.white30);
       case 'sent':
@@ -207,9 +217,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final messagesAsync = ref.watch(messagesProvider(widget.conversationId));
 
-    // Scroll to bottom when list changes
+    // Scroll to bottom when list changes and handle read receipts
     ref.listen(messagesProvider(widget.conversationId), (prev, next) {
       if (next.hasValue) {
+        final messages = next.value!;
+        bool needsUpdate = false;
+        
+        for (final msg in messages) {
+          if (msg['sender_id'] != _currentUserId && msg['delivery_status'] != 'read') {
+            needsUpdate = true;
+            final msgId = msg['message_id'] as String;
+            VaultDbService.instance.database.then((db) {
+              db.update(
+                'messages',
+                {'delivery_status': 'read'},
+                where: 'message_id = ?',
+                whereArgs: [msgId],
+              );
+            });
+            ref.read(websocketServiceProvider).sendReceipt(msgId, 'read');
+          }
+        }
+        
+        if (needsUpdate) {
+          final msk = ref.read(mskSessionProvider);
+          if (msk != null) {
+            ref.read(activePageSyncServiceProvider).uploadBackup(widget.conversationId, msk).catchError((_) {});
+          }
+          Future.microtask(() => ref.invalidate(messagesProvider(widget.conversationId)));
+        }
+        
         _scrollToBottom();
       }
     });
@@ -291,77 +328,133 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       );
                     }
 
-                    return ListView.builder(
+                    return ListView(
                       controller: _scrollController,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = messages[index];
+                      children: messages.map((msg) {
+                        final msgId = msg['message_id'] as String;
+                        _messageKeys[msgId] ??= GlobalKey();
+
                         final isMe = msg['sender_id'] == _currentUserId;
                         final content = msg['content'] as String;
                         final timestamp = msg['timestamp'] as int;
                         final status = msg['delivery_status'] as String;
+                        final replyToMessageId = msg['replyToMessageId'] as String?;
+                        final replyToContent = msg['replyToContent'] as String?;
                         final timeStr = TimeOfDay.fromDateTime(
                           DateTime.fromMillisecondsSinceEpoch(timestamp),
                         ).format(context);
 
+                        final isHighlighted = _highlightedMessageId == msgId;
+
                         return Align(
+                          key: _messageKeys[msgId],
                           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            constraints: BoxConstraints(
-                              maxWidth: MediaQuery.of(context).size.width * 0.75,
+                          child: Dismissible(
+                            key: Key('d_$msgId'),
+                            direction: DismissDirection.endToStart,
+                            confirmDismiss: (direction) async {
+                              setState(() {
+                                _replyingTo = msg;
+                              });
+                              return false;
+                            },
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              child: const Icon(Icons.reply, color: Colors.white),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: isMe
-                                  ? const Color(0xFF00E676).withOpacity(0.15)
-                                  : Colors.white.withOpacity(0.08),
-                              borderRadius: BorderRadius.only(
-                                topLeft: const Radius.circular(16),
-                                topRight: const Radius.circular(16),
-                                bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(0),
-                                bottomRight: isMe ? const Radius.circular(0) : const Radius.circular(16),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              margin: const EdgeInsets.only(bottom: 12),
+                              constraints: BoxConstraints(
+                                maxWidth: MediaQuery.of(context).size.width * 0.75,
                               ),
-                              border: Border.all(
-                                color: isMe
-                                    ? const Color(0xFF00E676).withOpacity(0.3)
-                                    : Colors.white.withOpacity(0.1),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  content,
-                                  style: TextStyle(
-                                    color: content == '[Decryption Failed]' ? Colors.redAccent : Colors.white,
-                                    fontSize: 15,
-                                    height: 1.3,
-                                  ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isHighlighted 
+                                    ? Colors.white.withOpacity(0.3)
+                                    : (isMe
+                                        ? const Color(0xFF00E676).withOpacity(0.15)
+                                        : Colors.white.withOpacity(0.08)),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: const Radius.circular(16),
+                                  topRight: const Radius.circular(16),
+                                  bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(0),
+                                  bottomRight: isMe ? const Radius.circular(0) : const Radius.circular(16),
                                 ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      timeStr,
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.4),
-                                        fontSize: 10,
+                                border: Border.all(
+                                  color: isHighlighted 
+                                      ? Colors.white
+                                      : (isMe
+                                          ? const Color(0xFF00E676).withOpacity(0.3)
+                                          : Colors.white.withOpacity(0.1)),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (replyToContent != null)
+                                    GestureDetector(
+                                      onTap: () {
+                                        if (replyToMessageId != null) {
+                                          final key = _messageKeys[replyToMessageId];
+                                          if (key != null && key.currentContext != null) {
+                                            Scrollable.ensureVisible(key.currentContext!, duration: const Duration(milliseconds: 300), alignment: 0.5);
+                                            setState(() => _highlightedMessageId = replyToMessageId);
+                                            Future.delayed(const Duration(seconds: 1), () {
+                                              if (mounted) setState(() => _highlightedMessageId = null);
+                                            });
+                                          }
+                                        }
+                                      },
+                                      child: Container(
+                                        margin: const EdgeInsets.only(bottom: 8),
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                        ),
+                                        child: Text(
+                                          replyToContent,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, fontStyle: FontStyle.italic),
+                                        ),
                                       ),
                                     ),
-                                    if (isMe) ...[
-                                      const SizedBox(width: 4),
-                                      _buildStatusIndicator(status),
+                                  Text(
+                                    content,
+                                    style: TextStyle(
+                                      color: content == '[Decryption Failed]' ? Colors.redAccent : Colors.white,
+                                      fontSize: 15,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        timeStr,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.4),
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                      if (isMe) ...[
+                                        const SizedBox(width: 4),
+                                        _buildStatusIndicator(status),
+                                      ],
                                     ],
-                                  ],
-                                ),
-                              ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );
-                      },
+                      }).toList(),
                     );
                   },
                   loading: () => const Center(
@@ -383,36 +476,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   color: Color(0xFF14242C),
                   border: Border(top: BorderSide(color: Colors.white10)),
                 ),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Enter secure translation message...',
-                          hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                          filled: true,
-                          fillColor: Colors.black.withOpacity(0.2),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    if (_replyingTo != null)
+                      Container(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.reply, size: 16, color: Colors.white54),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Replying to: ${_replyingTo!['content']}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () => setState(() => _replyingTo = null),
+                              child: const Icon(Icons.close, size: 16, color: Colors.white54),
+                            ),
+                          ],
                         ),
-                        onSubmitted: (_) => _sendMessage(),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF00E676),
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.send, color: Color(0xFF0F2027)),
-                        onPressed: _sendMessage,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: 'Enter secure translation message...',
+                              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                              filled: true,
+                              fillColor: Colors.black.withOpacity(0.2),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                            ),
+                            onSubmitted: (_) => _sendMessage(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF00E676),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.send, color: Color(0xFF0F2027)),
+                            onPressed: _sendMessage,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

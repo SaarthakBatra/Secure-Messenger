@@ -1,6 +1,8 @@
 // BLAKE2b Sub-Key Derivation Service (Dart)
 import 'dart:typed_data';
-import 'package:flutter_sodium/flutter_sodium.dart';
+import 'dart:convert';
+import 'package:sodium_libs/sodium_libs.dart';
+import '../../features/security/services/sodium_instance.dart';
 
 enum SubKeyContext { messages, notes, media }
 
@@ -13,7 +15,6 @@ class SubKeyService {
     SubKeyContext.media: 3,
   };
 
-  /// Derives a 32-byte sub-key from a master key using BLAKE2b-based `crypto_kdf_derive_from_key`.
   static Uint8List deriveSubKey({
     required Uint8List masterKey,
     required SubKeyContext context,
@@ -22,11 +23,13 @@ class SubKeyService {
     if (subkeyId == null) {
       throw ArgumentError('CRYPTO_006: Unknown subkey context');
     }
-    return Sodium.cryptoKdfDeriveFromKey(
-      32,
-      subkeyId,
-      Uint8List.fromList(_contextString.codeUnits),
-      masterKey,
+    
+    final derived = SodiumInstance.sodium.crypto.kdf.deriveFromKey(
+      masterKey: SecureKey.fromList(SodiumInstance.sodium, masterKey),
+      context: _contextString,
+      subkeyId: BigInt.from(subkeyId),
+      subkeyLen: 32,
     );
+    return derived.extractBytes();
   }
 }

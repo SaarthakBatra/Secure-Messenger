@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
-import 'package:sqflite_sqlcipher/sqflite.dart' as sqlcipher;
 import 'package:flutter/foundation.dart';
 import '../../security/services/sodium_crypto_service.dart';
 import 'profile_helper.dart';
+import 'db_factory.dart' as db_factory;
 
 class VaultDbService {
   static final VaultDbService instance = VaultDbService._init();
@@ -35,34 +34,14 @@ class VaultDbService {
         ? join(dbPath, 'profile_$profile', filePath)
         : join(dbPath, filePath);
     
-    // Ensure parent directory exists
-    await File(path).parent.create(recursive: true);
-
     final password = base64.encode(msk);
 
-    if (Platform.isLinux || Platform.isWindows) {
-      debugPrint('[STORAGE] Desktop platform detected. Opening standard SQLite database without SQLCipher.');
-      return await sqflite.openDatabase(
-        path,
-        version: 1,
-        onCreate: (db, version) async {
-          await _createDB(db, version);
-        },
-      );
-    } else {
-      debugPrint('[STORAGE] Mobile platform detected. Opening encrypted database with SQLCipher.');
-      // sqlcipher.Database and sqflite.Database are cast-compatible via database interface
-      final db = await sqlcipher.openDatabase(
-        path,
-        version: 1,
-        onCreate: (db, version) async {
-          // Both implement sqflite_common Database interface
-          await _createDB(db as sqflite.Database, version);
-        },
-        password: password,
-      );
-      return db as sqflite.Database;
-    }
+    return await db_factory.openDb(
+      path,
+      version: 1,
+      onCreate: _createDB,
+      password: password,
+    );
   }
 
   Future _createDB(sqflite.Database db, int version) async {
@@ -121,12 +100,17 @@ class VaultDbService {
     final db = await getDatabase(msk);
     final encryptedKey = SodiumCryptoService.encryptSymmetric(plaintextKey, msk);
     
+    String? encryptedAlias;
+    if (localAlias != null) {
+      encryptedAlias = SodiumCryptoService.encryptSymmetric(localAlias, msk);
+    }
+    
     await db.insert(
       'conversations',
       {
         'conversation_id': conversationId,
         'conversation_key': encryptedKey,
-        'local_alias': localAlias,
+        'local_alias': encryptedAlias,
         'status': status ?? 'PENDING',
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
