@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AuthApiService {
   final Dio _dio;
   
   // Hardcoded for local dev. In production, this would use a config provider.
-  final String _baseUrl = 'http://localhost:3000';
+  final String _baseUrl = (dotenv.isInitialized ? dotenv.env['API_URL'] : null) ?? 'http://localhost:3000';
 
   AuthApiService({Dio? dio}) : _dio = dio ?? Dio() {
     _dio.options.baseUrl = _baseUrl;

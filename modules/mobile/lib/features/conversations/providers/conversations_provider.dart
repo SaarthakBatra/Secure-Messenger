@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/router/app_router.dart';
 import '../../security/services/sodium_crypto_service.dart';
@@ -117,8 +118,8 @@ final vaultWebSocketProvider = Provider.autoDispose<void>((ref) {
   connect = () async {
     if (isDisposed) return;
     try {
-      // Hardcoded host mapping for local dev matching auth_api_service baseUrl
-      final wsUrl = 'ws://localhost:3000/ws?token=$token';
+      final wsBase = (dotenv.isInitialized ? dotenv.env['WS_URL'] : null) ?? 'ws://localhost:3000';
+      final wsUrl = '$wsBase/ws?token=$token';
       debugPrint('[WEBSOCKET] Connecting to $wsUrl');
       ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 5));
       

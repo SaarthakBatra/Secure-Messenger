@@ -21,12 +21,10 @@ app.use(helmet());
 app.use(express.json());
 
 // Dev shadow routes
-if (process.env.NODE_ENV !== 'production') {
-  try {
-    require('./dev/init')(app);
-  } catch (e) {
-    // Ignore if dev folder is removed
-  }
+try {
+  require('./dev/init')(app);
+} catch (e) {
+  // Ignore if dev folder is removed
 }
 
 const realAuthRouter = require('./auth/router');

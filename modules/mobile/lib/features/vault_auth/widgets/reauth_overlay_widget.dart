@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // Removed shared_preferences
 import '../../../app/router/app_router.dart';
@@ -98,7 +99,7 @@ class _ReauthOverlayWidgetState extends ConsumerState<ReauthOverlayWidget> with 
       
       final clientKey = SodiumCryptoService.generateClientKey(_pin, 'dev-fingerprint-mobile');
       
-      final cleanDio = Dio(BaseOptions(baseUrl: 'http://localhost:3000'));
+      final cleanDio = Dio(BaseOptions(baseUrl: (dotenv.isInitialized ? dotenv.env['API_URL'] : null) ?? 'http://localhost:3000'));
       final response = await cleanDio.post('/auth/reauth', data: {
         'sessionToken': token,
         'clientKey': clientKey,

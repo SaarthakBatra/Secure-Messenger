@@ -26,7 +26,8 @@ class SessionInterceptor extends QueuedInterceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final statusCode = err.response?.statusCode;
-    final errorCode = err.response?.data?['code'] as String?;
+    final responseData = err.response?.data;
+    final errorCode = (responseData is Map) ? responseData['code'] as String? : null;
 
     if (statusCode == 401) {
       if (errorCode == 'REFRESH_EXPIRED') {
@@ -66,7 +67,9 @@ class SessionInterceptor extends QueuedInterceptor {
           return handler.resolve(retryResponse);
           
         } on DioException catch (refreshErr) {
-          if (refreshErr.response?.statusCode == 403 && refreshErr.response?.data?['code'] == 'HACK_DETECTED') {
+          final refreshData = refreshErr.response?.data;
+          final refreshErrorCode = (refreshData is Map) ? refreshData['code'] as String? : null;
+          if (refreshErr.response?.statusCode == 403 && refreshErrorCode == 'HACK_DETECTED') {
              await _triggerBurnProtocol();
              return handler.resolve(
                Response(
