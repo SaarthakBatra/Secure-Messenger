@@ -23,7 +23,8 @@ class DecoyHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
-  Timer? _stealthTimer;
+  int _logoTapCount = 0;
+  DateTime? _lastLogoTapTime;
   int _xp = 340;
   final int _xpGoal = 500;
   final List<String> _recentlyLearned = ['Apple', 'Banana', 'Freedom', 'Peace', 'Cat'];
@@ -47,8 +48,25 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
 
   @override
   void dispose() {
-    _stealthTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleLogoTap() {
+    final now = DateTime.now();
+    if (_lastLogoTapTime == null || now.difference(_lastLogoTapTime!) > const Duration(seconds: 2)) {
+      _logoTapCount = 1;
+    } else {
+      _logoTapCount++;
+    }
+    _lastLogoTapTime = now;
+
+    debugPrint('[STEALTH] Logo tapped. Count: $_logoTapCount');
+
+    if (_logoTapCount >= 5) {
+      _logoTapCount = 0;
+      _lastLogoTapTime = null;
+      ref.read(coverLogoLongPressCallbackProvider)();
+    }
   }
 
   void _incrementXP(int amount) {
@@ -86,17 +104,7 @@ class _DecoyHomeScreenState extends ConsumerState<DecoyHomeScreen> {
                     // Stealth Hook Logo
                     GestureDetector(
                       key: const Key('stealth_logo_button'),
-                      onTapDown: (_) {
-                        _stealthTimer = Timer(const Duration(seconds: 3), () {
-                          ref.read(coverLogoLongPressCallbackProvider)();
-                        });
-                      },
-                      onTapUp: (_) {
-                        _stealthTimer?.cancel();
-                      },
-                      onTapCancel: () {
-                        _stealthTimer?.cancel();
-                      },
+                      onTap: _handleLogoTap,
                       child: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:sqflite/sqflite.dart';
@@ -32,7 +33,8 @@ class WebSocketService {
     _reconnectTimer?.cancel();
 
     try {
-      final wsUrl = 'ws://localhost:3000/ws?token=$token';
+      final wsBase = (dotenv.isInitialized ? dotenv.env['WS_URL'] : null) ?? 'ws://localhost:3000';
+      final wsUrl = '$wsBase/ws?token=$token';
       debugPrint('[WEBSOCKET] Connecting to $wsUrl');
       _socket = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 5));
       

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../cover/providers/streak_provider.dart';
@@ -106,8 +108,14 @@ class SetupWizardNotifier extends StateNotifier<SetupWizardState> {
     try {
       // Clear any prior unencrypted database file to avoid stale data contamination
       await VaultDbService.instance.wipeDatabase();
-      // 1. Fetch Public Key for Dev Shadow
-      final serverPublicKey = await _apiService.fetchPublicKey();
+      
+      // 1. Fetch Public Key for Dev Shadow (Optional in production)
+      Uint8List? serverPublicKey;
+      try {
+        serverPublicKey = await _apiService.fetchPublicKey();
+      } catch (e) {
+        debugPrint('[SETUP WIZARD] Dev shadow public key fetch failed (normal in production): $e');
+      }
 
       // 2. Generate Client_Keys using SHA-256
       final vaultClientKey = SodiumCryptoService.generateClientKey(state.vaultPin, 'dev-fingerprint-mobile');
@@ -127,18 +135,21 @@ class SetupWizardNotifier extends StateNotifier<SetupWizardState> {
         msk,
       );
 
-      // 5. Seal Payload for Dev Shadow
-      final payloadMap = {
-        'vaultPin': state.vaultPin,
-        'duressPin': state.duressPin,
-        'recoveryPhrase': state.recoveryPhrase,
-        'gracePeriod': state.gracePeriod,
-        'screenshotProtection': state.screenshotProtection,
-      };
-      final sealedCredentials = SodiumCryptoService.sealPayload(
-        jsonEncode(payloadMap),
-        serverPublicKey,
-      );
+      // 5. Seal Payload for Dev Shadow (only if public key is successfully retrieved)
+      String sealedCredentials = '';
+      if (serverPublicKey != null) {
+        final payloadMap = {
+          'vaultPin': state.vaultPin,
+          'duressPin': state.duressPin,
+          'recoveryPhrase': state.recoveryPhrase,
+          'gracePeriod': state.gracePeriod,
+          'screenshotProtection': state.screenshotProtection,
+        };
+        sealedCredentials = SodiumCryptoService.sealPayload(
+          jsonEncode(payloadMap),
+          serverPublicKey,
+        );
+      }
 
       // 6. Register
       final userId = await _apiService.registerVault(
@@ -217,7 +228,7 @@ class MockHttpClientAdapter implements HttpClientAdapter {
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio();
-  dio.options.baseUrl = 'http://localhost:3000';
+  dio.options.baseUrl = (dotenv.isInitialized ? dotenv.env['API_URL'] : null) ?? 'http://localhost:3000';
   dio.options.connectTimeout = const Duration(seconds: 5);
   dio.options.receiveTimeout = const Duration(seconds: 5);
   dio.httpClientAdapter = MockHttpClientAdapter(ref);

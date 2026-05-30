@@ -120,3 +120,24 @@ To maintain synchronized states and handle decryption or network dropouts, clien
 2. Initialize `SharedPreferences` asynchronously.
 3. Inject the initialized preferences into Riverpod providers (via `ProviderScope` overrides).
 4. Mount the `MultiLingoApp` routing shell.
+
+## Stealth Hook and Native Security Specification (Phase 2.1 & 9.1 Updates)
+
+### 1. Stealth Hook Entrance
+- **Trigger:** Tapping the main logo on the decoy home screen (`decoy_home_screen.dart`) 5 times rapidly.
+- **Constraints:** The interval between consecutive taps must be less than 2 seconds. If a tap occurs after more than 2 seconds, the counter resets.
+- **Action:** Triggers `coverLogoLongPressCallbackProvider`, routing the user to `/vault/setup` (if not configured) or `/home/report-issue` (if configured).
+
+### 2. Network Safety and Error Handling
+- **Production Endpoints:** Production environments omit dev shadow endpoints `/dev/*`.
+- **Fault-Tolerant Setup:** `completeRegistration` in `SetupWizardProvider` executes public key fetch (`fetchPublicKey`) optionally. If it fails (e.g. 404), the error is caught, and registration proceeds with `sealedCredentials` set to an empty string.
+- **Robust Error Interceptor:** `SessionInterceptor` must perform a type check on `err.response?.data` to ensure it is a `Map` before indexing key values like `['code']`. This prevents crashes on HTML 404 error pages returned by CDN/servers.
+
+### 3. Screen Lock / Native App Termination
+- **Android BroadcastReceiver:** `MainActivity` registers a receiver for `Intent.ACTION_SCREEN_OFF`.
+- **Termination Action:** If `isVaultActive` is set to `true`, the activity invokes `finishAndRemoveTask()` on screen-off to close the app and remove it from the recent apps list.
+- **Platform MethodChannel:** Communication of vault status uses the MethodChannel `com.example.mobile/security` with method `setVaultActive` (invoked only on Android).
+
+### 4. Dynamic Screen Protection (App Switcher)
+- **Decoy Visibility:** The app switcher preview for decoy screen is fully visible and not protected.
+- **Vault Protection:** App switcher preview is protected/blacked out (Android `FLAG_SECURE` / iOS `ScreenProtector.protectDataLeakageWithColor`) only when a vault session is active (`isVaultActive` is true).

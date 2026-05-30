@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide databaseFactory;
 import 'package:sqflite/sqflite.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:flutter_windowmanager/flutter_windowmanager.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'app/router/app_router.dart';
 import 'app/theme/app_theme.dart';
 import 'features/cover/providers/streak_provider.dart';
@@ -25,6 +27,12 @@ final isReauthOverlayActiveProvider = StateProvider<Completer<bool>?>((ref) => n
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('[ENV] Failed to load .env file: $e');
+  }
   
   if (Platform.isLinux || Platform.isWindows) {
     sqfliteFfiInit();
@@ -81,30 +89,42 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initNativeSecurity();
+    _updateNativeSecurity(false);
   }
 
-  void _initNativeSecurity() async {
-    // Android: Prevent screenshots and block App Switcher previews entirely
+  void _updateNativeSecurity(bool isVaultActive) async {
+    // Notify native Android BroadcastReceiver
     if (Platform.isAndroid) {
-      await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      try {
+        const channel = MethodChannel('com.example.mobile/security');
+        await channel.invokeMethod('setVaultActive', isVaultActive);
+      } catch (e) {
+        debugPrint('[SECURITY] Failed to invoke setVaultActive on channel: $e');
+      }
     }
-    // iOS: Overlay a dummy color when App Switcher is invoked (inactive state)
+
+    // Toggle screenshot & app switcher privacy masks dynamically
+    if (Platform.isAndroid) {
+      if (isVaultActive) {
+        await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      } else {
+        await FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+      }
+    }
     if (Platform.isIOS) {
-      await ScreenProtector.protectDataLeakageWithColor(const Color(0xFF0F2027)); // Matches decoy theme
-      await ScreenProtector.preventScreenshotOn();
+      if (isVaultActive) {
+        await ScreenProtector.protectDataLeakageWithColor(const Color(0xFF0F2027)); // Matches decoy theme
+        await ScreenProtector.preventScreenshotOn();
+      } else {
+        await ScreenProtector.preventScreenshotOff();
+      }
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (Platform.isAndroid) {
-      FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
-    }
-    if (Platform.isIOS) {
-      ScreenProtector.preventScreenshotOff();
-    }
+    _updateNativeSecurity(false);
     super.dispose();
   }
 
@@ -163,6 +183,15 @@ class _MultiLingoAppState extends ConsumerState<MultiLingoApp> with WidgetsBindi
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+
+    // Listen to vault session active status to toggle secure screen flags
+    ref.listen<bool>(
+      vaultSessionNotifierProvider.select((n) => n.isActive),
+      (previous, next) {
+        debugPrint('[SECURITY] Vault session active changed from $previous to $next');
+        _updateNativeSecurity(next ?? false);
+      },
+    );
 
     // E7 & Vault Stealth Interception Hook
     ref.listen(issueReportProvider, (previous, next) {
