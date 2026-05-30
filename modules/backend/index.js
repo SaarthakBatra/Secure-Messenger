@@ -19,7 +19,9 @@ server.maxHeadersCount = 30;
 server.headersTimeout = 10000; // 10 seconds
 
 app.use(cors());
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(express.json());
 
 // Dev shadow routes
